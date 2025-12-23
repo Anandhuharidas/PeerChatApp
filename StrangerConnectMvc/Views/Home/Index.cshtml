@@ -1,0 +1,152 @@
+﻿@{
+    ViewData["Title"] = "Home Page";
+}
+
+<h2>Stranger Connect</h2>
+
+@* <input id="nickname" placeholder="Enter nickname" />
+<button onclick="join()">Join</button>
+
+<p id="status"></p>
+
+<ul id="messages"></ul>
+
+<input id="message" placeholder="Type message" />
+<button onclick="send()">Send</button> *@
+
+<form method="post" asp-action="Join">
+    <input name="nickname" placeholder="Enter nickname" required />
+    <br /><br />
+    <button type="submit">Join Chat</button>
+</form>
+
+<video id="localVideo" autoplay muted width="200"></video>
+<video id="remoteVideo" autoplay width="200"></video>
+
+<button onclick="startVideo()">Start Video</button> 
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+
+<script>
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/chatHub")
+        .build();
+
+    connection.start();
+
+    function join() {
+        const name = document.getElementById("nickname").value;
+        connection.invoke("JoinChat", name);
+    }
+
+    function send() {
+        const msg = document.getElementById("message").value;
+        connection.invoke("SendMessage", msg);
+    }
+
+    connection.on("Waiting", function () {
+        document.getElementById("status").innerText =
+            "Waiting for a stranger...";
+    });
+
+    connection.on("Matched", function (name) {
+        document.getElementById("status").innerText =
+            "Connected with " + name;
+    });
+
+    connection.on("ReceiveMessage", function (name, msg) {
+        const li = document.createElement("li");
+        li.textContent = name + ": " + msg;
+        document.getElementById("messages").appendChild(li);
+    });
+
+    connection.on("PartnerLeft", function () {
+        document.getElementById("status").innerText =
+            "Stranger disconnected. Waiting again...";
+    });
+
+
+    let localStream;
+      let peerConnection;
+
+      const config = {
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      };
+
+      async function startVideo() {
+          localStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: true
+          });
+
+          document.getElementById("localVideo").srcObject = localStream;
+
+          peerConnection = new RTCPeerConnection(config);
+
+          localStream.getTracks().forEach(track =>
+              peerConnection.addTrack(track, localStream)
+          );
+
+          peerConnection.ontrack = e => {
+              document.getElementById("remoteVideo").srcObject = e.streams[0];
+          };
+
+          peerConnection.onicecandidate = e => {
+              if (e.candidate) {
+                  connection.invoke("SendIceCandidate",
+                      JSON.stringify(e.candidate));
+              }
+          };
+
+          const offer = await peerConnection.createOffer();
+          await peerConnection.setLocalDescription(offer);
+
+          connection.invoke("SendOffer", JSON.stringify(offer));
+      }
+
+      connection.on("ReceiveOffer", async offer => {
+          peerConnection = new RTCPeerConnection(config);
+
+          peerConnection.ontrack = e => {
+              document.getElementById("remoteVideo").srcObject = e.streams[0];
+          };
+
+          peerConnection.onicecandidate = e => {
+              if (e.candidate) {
+                  connection.invoke("SendIceCandidate",
+                      JSON.stringify(e.candidate));
+              }
+          };
+
+          localStream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: true
+          });
+
+          document.getElementById("localVideo").srcObject = localStream;
+
+          localStream.getTracks().forEach(track =>
+              peerConnection.addTrack(track, localStream)
+          );
+
+          await peerConnection.setRemoteDescription(
+              JSON.parse(offer));
+
+          const answer = await peerConnection.createAnswer();
+          await peerConnection.setLocalDescription(answer);
+
+          connection.invoke("SendAnswer", JSON.stringify(answer));
+      });
+
+      connection.on("ReceiveAnswer", async answer => {
+          await peerConnection.setRemoteDescription(
+              JSON.parse(answer));
+      });
+
+      connection.on("ReceiveIceCandidate", async candidate => {
+          await peerConnection.addIceCandidate(
+              JSON.parse(candidate));
+      });
+
+</script>

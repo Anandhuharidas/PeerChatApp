@@ -1,0 +1,165 @@
+﻿@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@{
+}
+
+@* <h2>Chat Room</h2>
+
+<p id="status"></p>
+
+<ul id="messages"></ul>
+
+<input id="message" placeholder="Type message" />
+<button onclick="send()">Send</button>
+
+<hr />
+
+<video id="localVideo" autoplay muted width="200"></video>
+<video id="remoteVideo" autoplay width="200"></video>
+
+<br />
+<button onclick="startVideo()">Start Video</button> *@
+
+<div class="container">
+
+    <h2>Chat Room</h2>
+
+    <p id="status"></p>
+
+    <ul id="messages"></ul>
+
+    <input id="message" placeholder="Type message" />
+    <button onclick="send()">Send</button>
+
+    <div class="video-area">
+        <video id="localVideo" autoplay muted width="200"></video>
+        <video id="remoteVideo" autoplay width="200"></video>
+    </div>
+
+    <br />
+    <button onclick="startVideo()">Start Video</button>
+
+</div>
+
+
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+
+<script>
+    const nickName = "@ViewBag.NickName";
+
+    const connection = new signalR.HubConnectionBuilder()
+        .withUrl("/chatHub")
+        .build();
+
+    connection.start().then(() => {
+        connection.invoke("JoinChat", nickName);
+    });
+
+    function send() {
+        const msg = document.getElementById("message").value;
+        connection.invoke("SendMessage", msg);
+    }
+
+    connection.on("Waiting", () => {
+        document.getElementById("status").innerText =
+            "Waiting for a stranger...";
+    });
+
+    connection.on("Matched", name => {
+        document.getElementById("status").innerText =
+            "Connected with " + name;
+    });
+
+    connection.on("ReceiveMessage", (name, msg) => {
+        const li = document.createElement("li");
+        li.innerText = name + ": " + msg;
+        document.getElementById("messages").appendChild(li);
+    });
+
+
+       let localStream;
+    let peerConnection;
+
+    const config = {
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
+
+    async function startVideo() {
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+        });
+
+        document.getElementById("localVideo").srcObject = localStream;
+
+        peerConnection = new RTCPeerConnection(config);
+
+        localStream.getTracks().forEach(track =>
+            peerConnection.addTrack(track, localStream)
+        );
+
+        peerConnection.ontrack = e => {
+            document.getElementById("remoteVideo").srcObject = e.streams[0];
+        };
+
+        peerConnection.onicecandidate = e => {
+            if (e.candidate) {
+                connection.invoke("SendIceCandidate",
+                    JSON.stringify(e.candidate));
+            }
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        connection.invoke("SendOffer", JSON.stringify(offer));
+    }
+
+    connection.on("ReceiveOffer", async offer => {
+        peerConnection = new RTCPeerConnection(config);
+
+        peerConnection.ontrack = e => {
+            document.getElementById("remoteVideo").srcObject = e.streams[0];
+        };
+
+        peerConnection.onicecandidate = e => {
+            if (e.candidate) {
+                connection.invoke("SendIceCandidate",
+                    JSON.stringify(e.candidate));
+            }
+        };
+
+        localStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+        });
+
+        document.getElementById("localVideo").srcObject = localStream;
+
+        localStream.getTracks().forEach(track =>
+            peerConnection.addTrack(track, localStream)
+        );
+
+        await peerConnection.setRemoteDescription(
+            JSON.parse(offer));
+
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        connection.invoke("SendAnswer", JSON.stringify(answer));
+    });
+
+    connection.on("ReceiveAnswer", async answer => {
+        await peerConnection.setRemoteDescription(
+            JSON.parse(answer));
+    });
+
+    connection.on("ReceiveIceCandidate", async candidate => {
+        await peerConnection.addIceCandidate(
+            JSON.parse(candidate));
+    });
+
+</script>
