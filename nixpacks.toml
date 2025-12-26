@@ -2,7 +2,9 @@
 nixPkgs = ["dotnet-sdk_8"]
 
 [phases.build]
-cmds = ["dotnet publish -c Release -o out"]
+# ഫോൾഡറിനുള്ളിൽ കയറി ബിൽഡ് ചെയ്യാൻ
+cmds = ["cd StrangerConnectMvc && dotnet publish -c Release -o ../out"]
 
 [start]
-cmd = "dotnet out/PeerChatApp.dll"
+# പുറത്തുള്ള out ഫോൾഡറിലെ ഫയൽ റൺ ചെയ്യാൻ
+cmd = "dotnet out/StrangerConnectMvc.dll"
