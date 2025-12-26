@@ -2,9 +2,7 @@
 nixPkgs = ["dotnet-sdk_8"]
 
 [phases.build]
-
 cmds = ["cd StrangerConnectMvc && dotnet publish -c Release -o ../out"]
 
 [start]
-
 cmd = "dotnet out/StrangerConnectMvc.dll"
